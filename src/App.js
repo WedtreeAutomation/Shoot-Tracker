@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, LogOut, User, Mail, Phone, Film, Edit2, X, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Calendar, LogOut, User, Mail, Phone, Film, Edit2, X, Save, TrendingUp, Sun, Moon } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import CalendarView from './components/CalendarView';
 import LoginPage from './components/LoginPage';
@@ -14,6 +14,12 @@ function App() {
   const [userData, setUserData] = useState(null);
   const [userId, setUserId] = useState(null);
 
+  // Theme state
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme || 'dark';
+  });
+
   // Check if user is already logged in
   useEffect(() => {
     const loggedIn = localStorage.getItem('isLoggedIn');
@@ -23,6 +29,18 @@ function App() {
       loadUserData(storedUserId);
     }
   }, []);
+
+  // Apply theme to body
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Toggle theme function
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+  };
 
   const loadUserData = async (id) => {
     try {
@@ -124,8 +142,10 @@ function App() {
                     onLogout={handleLogout} 
                     userData={userData}
                     onUpdateProfile={handleUpdateProfile}
+                    theme={theme}
+                    toggleTheme={toggleTheme}
                   />
-                  <Dashboard userData={userData} />
+                  <Dashboard userData={userData} theme={theme} />
                 </>
               } />
               <Route path="/calendar" element={
@@ -134,17 +154,20 @@ function App() {
                     onLogout={handleLogout} 
                     userData={userData}
                     onUpdateProfile={handleUpdateProfile}
+                    theme={theme}
+                    toggleTheme={toggleTheme}
                   />
-                  <CalendarView userData={userData} /> 
+                  <CalendarView userData={userData} theme={theme} /> 
                 </>
               } />
-              {/* ADD THE ANALYTICS ROUTE HERE */}
               <Route path="/analytics" element={
                 <>
                   <Navigation 
                     onLogout={handleLogout} 
                     userData={userData}
                     onUpdateProfile={handleUpdateProfile}
+                    theme={theme}
+                    toggleTheme={toggleTheme}
                   />
                   <Analytics />
                 </>
@@ -165,7 +188,7 @@ function App() {
   );
 }
 
-const Navigation = ({ onLogout, userData, onUpdateProfile }) => {
+const Navigation = ({ onLogout, userData, onUpdateProfile, theme, toggleTheme }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -237,26 +260,33 @@ const Navigation = ({ onLogout, userData, onUpdateProfile }) => {
             <LayoutDashboard size={18} />
             <span>Launch Dashboard</span>
           </Link>
-          {userData?.role !== 'Brand Team' && (
-              <>
-                <Link 
-                  to="/calendar" 
-                  className={location.pathname === '/calendar' ? 'active' : ''}
-                >
-                  <Calendar size={18} />
-                  <span>Shoot Calendar</span>
-                </Link>
 
-                <Link 
-                  to="/analytics" 
-                  className={location.pathname === '/analytics' ? 'active' : ''}
-                >
-                  <TrendingUp size={18} />
-                  <span>Analytics</span>
-                </Link>
-              </>
-            )}
-          
+          {userData?.role !== 'Brand Team' && (
+            <>
+              <Link 
+                to="/calendar" 
+                className={location.pathname === '/calendar' ? 'active' : ''}
+              >
+                <Calendar size={18} />
+                <span>Shoot Calendar</span>
+              </Link>
+
+              <Link 
+                to="/analytics" 
+                className={location.pathname === '/analytics' ? 'active' : ''}
+              >
+                <TrendingUp size={18} />
+                <span>Analytics</span>
+              </Link>
+            </>
+          )}
+
+          {/* Dark/Light Mode Toggle Button */}
+          <button className="theme-toggle-btn" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
+
           {/* Profile Dropdown */}
           <div className="profile-dropdown">
             <div 
@@ -272,7 +302,6 @@ const Navigation = ({ onLogout, userData, onUpdateProfile }) => {
                   <div className="dropdown-avatar">{firstLetter}</div>
                   <div className="dropdown-user-info">
                     <div className="dropdown-name">{userData?.name || 'User'}</div>
-                    {/* <div className="dropdown-role">{userData?.role || 'User'}</div> */}
                     <div className="dropdown-email">{userData?.email || userData?.phone || 'No contact info'}</div>
                   </div>
                 </div>
@@ -308,10 +337,6 @@ const Navigation = ({ onLogout, userData, onUpdateProfile }) => {
                   {saveMessage.includes('success') ? '✓' : '⚠'} {saveMessage}
                 </div>
               )}
-              
-              {/* <div className="profile-avatar-large">
-                <div className="large-avatar">{firstLetter}</div>
-              </div> */}
               
               <div className="form-group">
                 <label>
@@ -365,10 +390,7 @@ const Navigation = ({ onLogout, userData, onUpdateProfile }) => {
                     <span>Saving...</span>
                   </>
                 ) : (
-                  <>
-                    {/* <Save size={16} /> */}
-                    <span>Save Changes</span>
-                  </>
+                  <span>Save Changes</span>
                 )}
               </button>
             </div>
