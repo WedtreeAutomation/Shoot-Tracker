@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  PieChart, Pie, Cell, ResponsiveContainer
+  PieChart, Pie, Cell, ResponsiveContainer, ComposedChart, Line,
+  AreaChart, Area
 } from 'recharts';
 import { 
-  Users, Video, PieChart as PieChartIcon, Activity, Target, IndianRupee,
-  Filter, Download, Building, Clock, Eye
+  TrendingUp, Users, Camera, Video, Calendar as CalendarIcon, 
+  PieChart as PieChartIcon, Activity, Target, IndianRupee,
+  Filter, Download, User, Building, Clock, Eye
 } from 'lucide-react';
-import { format, startOfMonth, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { db } from '../config';
 
 const Analytics = () => {
   const [shoots, setShoots] = useState([]);
+  const [groupedShoots, setGroupedShoots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -26,7 +29,7 @@ const Analytics = () => {
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState('all');
   const [selectedUser, setSelectedUser] = useState('all');
-  const [, setSelectedDepartment] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   
   // Derived data for filters
@@ -34,23 +37,22 @@ const Analytics = () => {
   const [uniqueUsers, setUniqueUsers] = useState([]);
   const [shootExpenses, setShootExpenses] = useState([]);
 
-
   useEffect(() => {
     loadShoots();
   }, []);
 
-  // useEffect(() => {
-  //   if (shoots.length > 0) {
-  //     // Extract unique values for filters
-  //     const brands = [...new Set(shoots.map(s => s.brandName).filter(Boolean))];
-  //     const users = [...new Set(shoots.map(s => s.updatedUserEmail).filter(Boolean))];
-  //     setUniqueBrands(brands);
-  //     setUniqueUsers(users);
+  useEffect(() => {
+    if (shoots.length > 0) {
+      // Extract unique values for filters
+      const brands = [...new Set(shoots.map(s => s.brandName).filter(Boolean))];
+      const users = [...new Set(shoots.map(s => s.updatedUserEmail).filter(Boolean))];
+      setUniqueBrands(brands);
+      setUniqueUsers(users);
       
-  //     // Calculate shoot expenses
-  //     calculateShootExpenses();
-  //   }
-  // }, [shoots, shootGroupsData]);
+      // Calculate shoot expenses
+      calculateShootExpenses();
+    }
+  }, [shoots, shootGroupsData]);
 
   const loadShoots = async () => {
     try {
@@ -76,18 +78,10 @@ const Analytics = () => {
     }
   };
 
- useEffect(() => {
-  if (shoots.length > 0) {
-    // 1. Extract unique values
-    const brands = [...new Set(shoots.map(s => s.brandName).filter(Boolean))];
-    const users = [...new Set(shoots.map(s => s.updatedUserEmail).filter(Boolean))];
-    setUniqueBrands(brands);
-    setUniqueUsers(users);
-    
-    // 2. Calculate expenses directly inside
+  const calculateShootExpenses = () => {
     const expenses = shootGroupsData.map(group => {
       const relatedShoots = shoots.filter(s => s.shootId === group.Shootid);
-      const relatedBrands = [...new Set(relatedShoots.map(s => s.brandName).filter(Boolean))];
+      const brands = [...new Set(relatedShoots.map(s => s.brandName).filter(Boolean))];
       const models = [...new Set(relatedShoots.map(s => s.modelName).filter(Boolean))];
       const editors = [...new Set(relatedShoots.map(s => s.editor).filter(Boolean))];
       const photographers = [...new Set(relatedShoots.map(s => s.photographer).filter(Boolean))];
@@ -96,7 +90,7 @@ const Analytics = () => {
         shootId: group.Shootid,
         shootName: group.Shootname,
         shootDate: group.ShootDate,
-        brands: relatedBrands.join(', '),
+        brands: brands.join(', '),
         models: models.join(', '),
         editors: editors.join(', '),
         photographers: photographers.join(', '),
@@ -108,16 +102,14 @@ const Analytics = () => {
         shootBudget: group.Shootbudget || 0,
         stylistBudget: group.Stylistbudget || 0,
         launchCount: relatedShoots.length,
-        status: group.status || 'pending',
+        status: group.status || group.status || 'pending', // Get status from shootgroups
         createdAt: group.createdAt,
         updatedTime: group.updatedTime,
         updatedUserEmail: group.updatedUserEmail
       };
     });
-    
     setShootExpenses(expenses);
-  }
-}, [shoots, shootGroupsData, setUniqueBrands, setUniqueUsers, setShootExpenses]);
+  };
 
   // Enhanced filter function - filters based on SHOOT status (from shootgroups)
   const filterByCustomCriteria = (item) => {
@@ -160,15 +152,15 @@ const Analytics = () => {
   const filteredShootExpenses = shootExpenses.filter(filterByCustomCriteria);
 
   // Get all available shoot statuses for filter dropdown
-  // const getAvailableStatuses = () => {
-  //   const statuses = new Set();
-  //   shootExpenses.forEach(expense => {
-  //     if (expense.status) {
-  //       statuses.add(expense.status);
-  //     }
-  //   });
-  //   return Array.from(statuses);
-  // };
+  const getAvailableStatuses = () => {
+    const statuses = new Set();
+    shootExpenses.forEach(expense => {
+      if (expense.status) {
+        statuses.add(expense.status);
+      }
+    });
+    return Array.from(statuses);
+  };
 
   // Department wise analytics
   const getDepartmentAnalytics = () => {
@@ -399,7 +391,7 @@ const Analytics = () => {
             </select>
           </div>
           
-          <div className="filter-group">
+          {/* <div className="filter-group">
             <label>User (Last Updated By)</label>
             <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
               <option value="all">All Users</option>
@@ -407,7 +399,7 @@ const Analytics = () => {
                 <option key={user} value={user}>{user}</option>
               ))}
             </select>
-          </div>
+          </div> */}
           
           <div className="filter-group">
             <label>Shoot Status</label>
@@ -769,132 +761,244 @@ const Analytics = () => {
       </div>
 
       <style>{`
-        .filter-section {
-          background: #1e293b;
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 24px;
-          border: 1px solid #334155;
-        }
-        .filter-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 16px;
-          color: #e2e8f0;
-        }
-        .filter-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 16px;
-          margin-bottom: 16px;
-        }
-        .filter-group {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .filter-group label {
-          font-size: 12px;
-          color: #94a3b8;
-          font-weight: 500;
-        }
-        .filter-group select, .filter-group input {
-          padding: 8px 12px;
-          background: #0f172a;
-          border: 1px solid #334155;
-          border-radius: 6px;
-          color: #e2e8f0;
-          font-size: 14px;
-        }
-        .date-range-toggle {
-          display: flex;
-          gap: 8px;
-        }
-        .date-range-toggle button {
-          padding: 6px 12px;
-          background: #0f172a;
-          border: 1px solid #334155;
-          border-radius: 6px;
-          color: #94a3b8;
-          cursor: pointer;
-          font-size: 12px;
-        }
-        .date-range-toggle button.active {
-          background: #5b8fb9;
-          color: white;
-          border-color: #5b8fb9;
-        }
-        .month-year-selector {
-          display: flex;
-          gap: 8px;
-        }
-        .custom-date-range {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .filter-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          margin-top: 16px;
-          padding-top: 16px;
-          border-top: 1px solid #334155;
-        }
-        .table-responsive {
-          overflow-x: auto;
-        }
-        .full-width {
-          width: 100%;
-          min-width: 1200px;
-        }
-        .status-badge {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: 500;
-          color: white;
-        }
-        .btn-primary, .btn-secondary {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-size: 14px;
-          cursor: pointer;
-          border: none;
-        }
-        .btn-primary {
-          background: #5b8fb9;
-          color: white;
-        }
-        .btn-secondary {
-          background: #334155;
-          color: #e2e8f0;
-        }
-        .loading-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 400px;
-        }
-        .spinner {
-          border: 4px solid #f3f3f3;
-          border-top: 4px solid #5b8fb9;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
+  .filter-section {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    border: 1px solid #334155;
+  }
+  .filter-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    color: #e2e8f0;
+  }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .filter-group label {
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: 500;
+  }
+  .filter-group select, .filter-group input {
+    padding: 8px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 14px;
+  }
+  .date-range-toggle {
+    display: flex;
+    gap: 8px;
+  }
+  .date-range-toggle button {
+    padding: 6px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .date-range-toggle button.active {
+    background: #5b8fb9;
+    color: white;
+    border-color: #5b8fb9;
+  }
+  .month-year-selector {
+    display: flex;
+    gap: 8px;
+  }
+  .custom-date-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #334155;
+  }
+  .table-responsive {
+    overflow-x: auto;
+  }
+  .full-width {
+    width: 100%;
+    min-width: 1200px;
+  }
+  .status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: white;
+  }
+  .btn-primary, .btn-secondary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary {
+    background: #5b8fb9;
+    color: white;
+  }
+  .btn-secondary {
+    background: #334155;
+    color: #e2e8f0;
+  }
+  .loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+  }
+  .spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #5b8fb9;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Light Mode Overrides - Only background changes */
+  [data-theme="light"] .filter-section {
+    background: #f0f4f9;
+    border-color: #d0d8e3;
+  }
+  
+  [data-theme="light"] .filter-header {
+    color: #1a2c3e;
+  }
+  
+  [data-theme="light"] .filter-group label {
+    color: #5a6e7e;
+  }
+  
+  [data-theme="light"] .filter-group select,
+  [data-theme="light"] .filter-group input {
+    background: #ffffff;
+    border-color: #d0d8e3;
+    color: #1a2c3e;
+  }
+  
+  [data-theme="light"] .date-range-toggle button {
+    background: #ffffff;
+    border-color: #d0d8e3;
+    color: #5a6e7e;
+  }
+  
+  [data-theme="light"] .date-range-toggle button.active {
+    background: #4a7c9c;
+    color: white;
+    border-color: #4a7c9c;
+  }
+  
+  [data-theme="light"] .filter-actions {
+    border-top-color: #d0d8e3;
+  }
+  
+  [data-theme="light"] .btn-primary {
+    background: #4a7c9c;
+  }
+  
+  [data-theme="light"] .btn-secondary {
+    background: #eef2f6;
+    color: #1a2c3e;
+  }
+  
+  [data-theme="light"] .status-badge {
+    /* Keep status badges with their colors */
+    opacity: 0.9;
+  }
+
+    /* Light Mode Overrides */
+  [data-theme="light"] .filter-section {
+    background: #f0f4f9;
+    border-color: #d0d8e3;
+  }
+  
+  [data-theme="light"] .filter-header {
+    color: #1a2c3e;
+  }
+  
+  [data-theme="light"] .filter-group label {
+    color: #5a6e7e;
+  }
+  
+  [data-theme="light"] .filter-group select,
+  [data-theme="light"] .filter-group input {
+    background: #ffffff;
+    border-color: #d0d8e3;
+    color: #1a2c3e;
+  }
+  
+  [data-theme="light"] .date-range-toggle button {
+    background: #ffffff;
+    border-color: #d0d8e3;
+    color: #5a6e7e;
+  }
+  
+  [data-theme="light"] .date-range-toggle button.active {
+    background: #4a7c9c;
+    color: white;
+    border-color: #4a7c9c;
+  }
+  
+  [data-theme="light"] .filter-actions {
+    border-top-color: #d0d8e3;
+  }
+  
+  [data-theme="light"] .btn-primary {
+    background: #4a7c9c;
+  }
+  
+  [data-theme="light"] .btn-secondary {
+    background: #eef2f6;
+    color: #1a2c3e;
+  }
+  
+  /* ADD THIS - Makes Shoot Status Analytics card background match month/year selector */
+  [data-theme="light"] .analytics-card {
+    background: #ffffff;
+    border-color: #d0d8e3;
+  }
+  
+  [data-theme="light"] .analytics-card .card-header {
+    background: #f0f4f9;
+    border-color: #d0d8e3;
+  }
+  
+  [data-theme="light"] .card-title h2 {
+    color: #1a2c3e;
+  }
+`}</style>
     </div>
   );
 };
