@@ -1,12 +1,13 @@
-import React, { useState, useEffect,useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addWeeks, subWeeks } from 'date-fns';
-import { Search, X, Edit2, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Save, Trash2, Filter } from 'lucide-react';
+import { Search, X, Edit2, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Save, FolderOpen, Trash2, Filter } from 'lucide-react';
 import { db } from '../config';
-import { collection, getDocs, updateDoc, doc,   addDoc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, query, where, addDoc } from 'firebase/firestore';
 
-const CalendarView = ({ userData }) => {
+const CalendarView = ({ userData, theme }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [shoots, setShoots] = useState([]);
+  const [groupedShoots, setGroupedShoots] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedShoot, setSelectedShoot] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -33,7 +34,7 @@ const CalendarView = ({ userData }) => {
     endDate: ''
   });
 
-  const [setMediaMembers] = useState([]);
+  const [mediaMembers, setMediaMembers] = useState([]);
   const [editors, setEditors] = useState([]);
   const [photographers, setPhotographers] = useState([]);
   const [shootGroupsData, setShootGroupsData] = useState([]);
@@ -54,6 +55,7 @@ const CalendarView = ({ userData }) => {
   const STATUS_MAPPING = {
     'pending': 0,
     'scheduled': 1,
+    'Rescheduled': 1.5,
     'shootdone': 2,
     'completed': 3,
     'readytogo': 4,
@@ -71,52 +73,52 @@ const CalendarView = ({ userData }) => {
     5: 'launchdone'
   };
 
+  useEffect(() => {
+    loadShoots();
+    loadMediaMembers();
+  }, []);
 
+  const loadMediaMembers = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'MediaTeamMembers'));
+      const members = [];
+      querySnapshot.forEach((doc) => {
+        members.push({ id: doc.id, ...doc.data() });
+      });
+      setEditors(members.filter(m => m.memberRole === 'Editor'));
+      setPhotographers(members.filter(m => m.memberRole === 'Photographer'));
+      setMediaMembers(members);
+    } catch (error) {
+      console.error("Error loading members:", error);
+    }
+  };
 
-const loadShoots = useCallback(async () => {
-  try {
-    const shootsSnapshot = await getDocs(collection(db, 'shoots'));
-    const shootsData = [];
-    shootsSnapshot.forEach((doc) => {
-      shootsData.push({ id: doc.id, ...doc.data() });
-    });
-    setShoots(shootsData);
+  const loadShoots = async () => {
+    try {
+      const shootsSnapshot = await getDocs(collection(db, 'shoots'));
+      const shootsData = [];
+      shootsSnapshot.forEach((doc) => {
+        shootsData.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      setShoots(shootsData);
 
-    const groupsSnapshot = await getDocs(collection(db, 'shootgroups'));
-    const groupsData = [];
-    groupsSnapshot.forEach((doc) => {
-      groupsData.push({ id: doc.id, ...doc.data() });
-    });
-    setShootGroupsData(groupsData);
-    return shootsData;
-  } catch (error) {
-    console.error("Error loading shoots:", error);
-  }
-}, [setShoots, setShootGroupsData]); // 👈 Pass stable state setters as dependencies
-
-
-// 3. Define loadMediaMembers outside useEffect, wrapped in useCallback
-const loadMediaMembers = useCallback(async () => {
-  try {
-    const querySnapshot = await getDocs(collection(db, 'MediaTeamMembers'));
-    const members = [];
-    querySnapshot.forEach((doc) => {
-      members.push({ id: doc.id, ...doc.data() });
-    });
-    setEditors(members.filter(m => m.memberRole === 'Editor'));
-    setPhotographers(members.filter(m => m.memberRole === 'Photographer'));
-    setMediaMembers(members);
-  } catch (error) {
-    console.error("Error loading members:", error);
-  }
-}, [setEditors, setPhotographers, setMediaMembers]); // 👈 Pass stable state setters as dependencies
-
-
-// 4. Your useEffect now simply calls the accessible functions safely
-useEffect(() => {
-  loadShoots();
-  loadMediaMembers();
-}, [loadShoots, loadMediaMembers]);
+      const groupsSnapshot = await getDocs(collection(db, 'shootgroups'));
+      const groupsData = [];
+      groupsSnapshot.forEach((doc) => {
+        groupsData.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      setShootGroupsData(groupsData);
+      return shootsData;
+    } catch (error) {
+      console.error("Error loading shoots:", error);
+    }
+  };
 
   // Calculate the minimum status number among all launches
   const getMinimumStatusFromLaunches = (launches) => {
@@ -164,6 +166,7 @@ useEffect(() => {
           status: minStatus,
           ...getTrackingFields()
         });
+        console.log(`Updated shootgroup status to: ${minStatus}`);
       }
     } catch (error) {
       console.error('Error syncing group status:', error);
@@ -988,18 +991,19 @@ useEffect(() => {
     setSearchTerm('');
   };
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'pending': return '#f59e0b';
-      case 'scheduled': return '#3b82f6';
-      case 'shootdone': return '#8b5cf6';
-      case 'completed': return '#10b981';
-      case 'readytogo': return '#06b6d4';
-      case 'launchdone': return '#6366f1';
-      case 'cancelled': return '#ef4444';
-      default: return '#6b7280';
-    }
-  };
+const getStatusColor = (status) => {
+  switch(status) {
+    case 'pending': return '#f59e0b';
+    case 'scheduled': return '#3b82f6';
+    case 'Rescheduled': return '#8b5cf6';
+    case 'shootdone': return '#8b5cf6';
+    case 'readytogo': return '#06b6d4';
+    case 'launchdone': return '#6366f1';
+    case 'completed': return '#10b981';
+    case 'cancelled': return '#ef4444';
+    default: return '#6b7280';
+  }
+};
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Not set';
@@ -1347,386 +1351,6 @@ useEffect(() => {
         </div>
       </div>
 
-      <style jsx="true">{`
-        .filter-toggle-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 16px;
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 8px;
-          color: #e2e8f0;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .filter-toggle-btn:hover {
-          background: #334155;
-        }
-        
-        .filter-toggle-btn.active {
-          background: #3b82f6;
-          border-color: #3b82f6;
-        }
-        
-        .filter-badge {
-          color: #f59e0b;
-          font-size: 12px;
-          margin-left: 4px;
-        }
-        
-        .filters-panel {
-          background: #1e293b;
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 20px;
-          border: 1px solid #334155;
-        }
-        
-        .filters-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-        
-        .filter-group {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        
-        .filter-group label {
-          font-size: 12px;
-          font-weight: 500;
-          color: #94a3b8;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        
-        .filter-group select,
-        .filter-group input {
-          padding: 8px 12px;
-          background: #0f172a;
-          border: 1px solid #334155;
-          border-radius: 6px;
-          color: #e2e8f0;
-          font-size: 14px;
-        }
-        
-        .filter-group select:focus,
-        .filter-group input:focus {
-          outline: none;
-          border-color: #3b82f6;
-        }
-        
-        .filters-actions {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding-top: 12px;
-          border-top: 1px solid #334155;
-        }
-        
-        .clear-filters-btn {
-          padding: 8px 16px;
-          background: #ef4444;
-          border: none;
-          border-radius: 6px;
-          color: white;
-          cursor: pointer;
-          font-size: 14px;
-          transition: background 0.2s;
-        }
-        
-        .clear-filters-btn:hover {
-          background: #dc2626;
-        }
-        
-        .filter-results-count {
-          font-size: 14px;
-          color: #94a3b8;
-        }
-        
-        .search-results-info {
-          background: #1e293b;
-          padding: 12px 16px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
-        
-        .jump-to-first-btn {
-          padding: 6px 12px;
-          background: #3b82f6;
-          border: none;
-          border-radius: 6px;
-          color: white;
-          cursor: pointer;
-          font-size: 12px;
-        }
-        
-        .jump-to-first-btn:hover {
-          background: #2563eb;
-        }
-        
-        .search-input-wrapper {
-          flex: 1;
-          position: relative;
-        }
-        
-        .search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: #64748b;
-        }
-        
-        .search-input {
-          width: 100%;
-          padding: 10px 12px 10px 36px;
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 8px;
-          color: #e2e8f0;
-          font-size: 14px;
-        }
-        
-        .search-input:focus {
-          outline: none;
-          border-color: #3b82f6;
-        }
-        
-        .clear-search-btn {
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-          padding: 4px;
-        }
-        
-        .clear-search-btn:hover {
-          color: #e2e8f0;
-        }
-        
-        .calendar-search-bar {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 20px;
-        }
-
-        .calendar-container {
-          padding: 20px;
-          background: #0f172a;
-          min-height: 100vh;
-          color: #e2e8f0;
-        }
-
-        .calendar-header {
-          margin-bottom: 24px;
-        }
-
-        .calendar-header h2 {
-          margin-bottom: 16px;
-          color: #f8fafc;
-        }
-
-        .calendar-controls {
-          display: flex;
-          gap: 16px;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
-        }
-
-        .nav-controls {
-          display: flex;
-          gap: 8px;
-        }
-
-        .btn-icon {
-          padding: 8px 12px;
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 6px;
-          color: #e2e8f0;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .btn-icon:hover {
-          background: #334155;
-        }
-
-        .date-picker-container {
-          position: relative;
-        }
-
-        .date-picker-dropdown {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          margin-top: 8px;
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 8px;
-          padding: 12px;
-          z-index: 1000;
-          min-width: 250px;
-        }
-
-        .date-picker-header {
-          margin-bottom: 12px;
-          font-size: 14px;
-          color: #94a3b8;
-        }
-
-        .date-picker-input {
-          width: 100%;
-          padding: 8px;
-          background: #0f172a;
-          border: 1px solid #334155;
-          border-radius: 4px;
-          color: #e2e8f0;
-          margin-bottom: 12px;
-        }
-
-        .date-picker-actions {
-          display: flex;
-          gap: 8px;
-          justify-content: flex-end;
-        }
-
-        .btn-secondary-small,
-        .btn-primary-small {
-          padding: 6px 12px;
-          border-radius: 4px;
-          border: none;
-          cursor: pointer;
-          font-size: 12px;
-        }
-
-        .btn-secondary-small {
-          background: #334155;
-          color: #e2e8f0;
-        }
-
-        .btn-primary-small {
-          background: #3b82f6;
-          color: white;
-        }
-
-        .calendar-grid {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          gap: 1px;
-          background: #334155;
-          border: 1px solid #334155;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-
-        .calendar-day {
-          background: #1e293b;
-          min-height: 400px;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .calendar-day.today {
-          background: #1e3a5f;
-        }
-
-        .day-header {
-          padding: 12px;
-          text-align: center;
-          border-bottom: 1px solid #334155;
-        }
-
-        .day-name {
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-
-        .day-date {
-          font-size: 24px;
-          font-weight: 700;
-          color: #94a3b8;
-        }
-
-        .today-date {
-          color: #3b82f6;
-        }
-
-        .day-shoots {
-          flex: 1;
-          padding: 8px;
-          overflow-y: auto;
-          max-height: 400px;
-        }
-
-        .no-shoots {
-          text-align: center;
-          color: #64748b;
-          font-size: 12px;
-          padding: 16px;
-        }
-
-        .calendar-shoot-card {
-          background: #0f172a;
-          border-radius: 6px;
-          padding: 8px;
-          margin-bottom: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-          border-left: 3px solid #3b82f6;
-        }
-
-        .calendar-shoot-card:hover {
-          transform: translateX(2px);
-          background: #1e293b;
-        }
-
-        .shoot-time {
-          font-size: 12px;
-          font-weight: 600;
-          margin-bottom: 4px;
-          color: #94a3b8;
-        }
-
-        .shoot-details {
-          font-size: 11px;
-          color: #64748b;
-          margin-bottom: 6px;
-        }
-
-        .shoot-details strong {
-          display: block;
-          color: #e2e8f0;
-          font-size: 12px;
-        }
-
-        .shoot-status {
-          display: inline-block;
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-size: 10px;
-          font-weight: 600;
-          text-transform: uppercase;
-        }
-      `}</style>
-
       {/* Rest of the modals remain the same */}
       {showGroupModal && selectedGroup && (
         <div className="calendar-modal-overlay" onClick={closeModal}>
@@ -1860,15 +1484,15 @@ useEffect(() => {
                     </button>
                   </div>
                   {showAddLaunch && (
-                    <div style={{ marginBottom: '16px', border: '1px solid #334155', borderRadius: '8px', padding: '12px', background: '#1e293b' }}>
-                      <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>
+                    <div className="add-launch-panel">
+                      <p className="add-launch-hint">
                         Select launches to add (pending shoots only):
                       </p>
-                      <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div className="add-launch-list">
                         {shoots
                           .filter(s => !s.shootId || s.shootId === '')
                           .map(s => (
-                            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#e2e8f0' }}>
+                            <label key={s.id} className="add-launch-label">
                               <input
                                 type="checkbox"
                                 checked={selectedLaunchIds.includes(s.id)}
@@ -1881,7 +1505,7 @@ useEffect(() => {
                                 }}
                               />
                               <span>{s.postId || 'No Post ID'}</span>
-                              {s.brandName && <span style={{ color: '#64748b' }}>— {s.brandName}</span>}
+                              {s.brandName && <span className="add-launch-brand">— {s.brandName}</span>}
                             </label>
                           ))
                         }
@@ -2377,9 +2001,9 @@ useEffect(() => {
                       >
                         <option value="pending">Pending</option>
                         <option value="scheduled">Shoot Scheduled</option>
-                        <option value="shootdone">Shoot Completed</option>
-                        <option value="completed">Edit Completed</option>
+                        <option value="shootdone">Shoot Done</option>
                         <option value="readytogo">Ready to Go</option>
+                        <option value="Rescheduled">Rescheduled</option>
                         <option value="launchdone">Launch Done</option>
                         <option value="cancelled">Cancelled</option>
                       </select>
